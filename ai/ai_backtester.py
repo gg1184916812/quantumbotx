@@ -39,7 +39,8 @@ class AIBacktester:
         self.price_predictor = None
         
         # 加载 AI 模型
-        self._load_model(model_path, scaler_path, feature_cols_path, calibrator_path)
+        if not self._load_model(model_path, scaler_path, feature_cols_path, calibrator_path):
+            print("⚠️ 模型加载失败，回测将在无 AI 模式下运行（所有预测返回中性状态）")
         
         # 加载价格目标模型
         if price_target_model_path and os.path.exists(price_target_model_path):
@@ -119,6 +120,12 @@ class AIBacktester:
     
     def _predict_state(self, df_slice: pd.DataFrame) -> Dict[str, Any]:
         """预测单根 K 线的市场状态"""
+        if self.model is None:
+            return {'state': 0, 'confidence': 0.0}
+        if isinstance(self.model, dict):
+            return {'state': 0, 'confidence': 0.0}
+        if not hasattr(self.model, 'predict_proba'):
+            return {'state': 0, 'confidence': 0.0}
         try:
             df_feat = FeatureFactory.compute_features(df_slice)
             if len(df_feat) == 0:
@@ -607,7 +614,9 @@ class AIBacktester:
         print("="*70)
 
 
-def run_ai_backtest(symbol: str, model_name: str, data_file: str, use_target: bool = True):
+def run_ai_backtest(symbol: str, model_name: str, data_file: str, use_target: bool = True,
+                    initial_capital: float = 10000.0, risk_percent: float = 1.0,
+                    sl_atr: float = 2.0, tp_atr: float = 4.0):
     """运行 AI 回测的便捷函数"""
     import os
     from pathlib import Path
@@ -622,7 +631,6 @@ def run_ai_backtest(symbol: str, model_name: str, data_file: str, use_target: bo
     calibrator_path = os.path.join(model_dir, f"{base_name}_calibrators.pkl")
     price_target_path = os.path.join(model_dir, f"{base_name}_price_target.pkl")
     
-    # 如果找不到，尝试简化名称
     if not os.path.exists(scaler_path):
         parts = base_name.split('_')
         if len(parts) >= 2:
@@ -632,10 +640,8 @@ def run_ai_backtest(symbol: str, model_name: str, data_file: str, use_target: bo
             calibrator_path = os.path.join(model_dir, f"{simple_base}_calibrators.pkl")
             price_target_path = os.path.join(model_dir, f"{simple_base}_price_target.pkl")
     
-    # 加载数据
     df = pd.read_csv(data_file, parse_dates=['time'])
     
-    # 创建回测器
     backtester = AIBacktester(
         symbol=symbol,
         model_path=model_path,
@@ -645,6 +651,11 @@ def run_ai_backtest(symbol: str, model_name: str, data_file: str, use_target: bo
         price_target_model_path=price_target_path if os.path.exists(price_target_path) else None
     )
     
+    backtester.initial_capital = initial_capital
+    backtester.capital = initial_capital
+    backtester.risk_percent = risk_percent
+    backtester.sl_atr_multiplier = sl_atr
+    backtester.tp_atr_multiplier = tp_atr
     backtester.use_target_prediction = use_target
     report = backtester.run(df)
     backtester.print_report(report)

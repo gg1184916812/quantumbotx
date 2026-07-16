@@ -84,9 +84,8 @@ class TradingBot(threading.Thread):
             feature_cols_path = os.path.join(project_root, 'feature_cols.pkl')
 
             if os.path.exists(model_path) and os.path.exists(scaler_path):
-                from core.ai.train_utils import safe_load_model
-                self.ai_predictor = safe_load_model(model_path)
-
+                with open(model_path, 'rb') as f:
+                    self.ai_predictor = pickle.load(f)
                 with open(scaler_path, 'rb') as f:
                     self.ai_scaler = pickle.load(f)
 
